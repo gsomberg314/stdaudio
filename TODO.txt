@@ -1,0 +1,2 @@
+TODO:
+- Remove handle<T>.  Return std::shared_ptr<T> instead.

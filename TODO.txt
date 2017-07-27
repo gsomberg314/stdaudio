@@ -1,2 +1,2 @@
 TODO:
-- Remove handle<T>.  Return std::shared_ptr<T> instead.
+- Remove handle<T>.  Return std::unique_ptr<T> instead.

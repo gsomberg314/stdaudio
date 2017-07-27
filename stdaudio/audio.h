@@ -3,6 +3,8 @@
 #include <string>
 #include <memory>
 #include <filesystem>
+#include <unordered_map>
+#include <cstdint>
 
 namespace FMOD
 {
@@ -18,6 +20,11 @@ namespace std
 	{
 		namespace audio
 		{
+			class device;
+			class voice;
+			class submix;
+			class sound;
+
 			struct guid
 			{
 				unsigned int data1;
@@ -28,14 +35,52 @@ namespace std
 
 			struct driver_info
 			{
-				int id;
 				std::string name;
 				guid guid;
 			};
 
-			class channel;
-			class submix;
-			class sound;
+			template<typename T>
+			class handle
+			{
+			public:
+				handle() : 
+					m_lookup(&default_lookup),
+					m_key(0)
+				{}
+
+				T* get()
+				{
+					auto found = m_lookup->find(m_key);
+					if (found != m_lookup->end())
+					{
+						return &found->second;
+					}
+					else
+					{
+						return nullptr;
+					}
+				}
+
+				const T* get() const
+				{
+					return const_cast<handle<T>*>(this)->get();
+				}
+
+			private:
+				static std::unordered_map<int, T> default_lookup;
+
+				friend class device;
+				handle(
+					std::unordered_map<int, T>* lookup,
+					int key) :
+					m_lookup(lookup),
+					m_key(key)
+				{
+				}
+
+				std::unordered_map<int, T>* m_lookup;
+				int m_key;
+			};
 
 			class device
 			{
@@ -47,11 +92,14 @@ namespace std
 				driver_info get_driver(int index) const;
 				void set_driver(int index);
 
-				std::weak_ptr<sound> load_sound(const std::experimental::filesystem::path& filepath);
-				std::weak_ptr<channel> play_sound(const std::shared_ptr<sound>& sound, const std::shared_ptr<submix>& submix = nullptr, bool paused = false);
+				handle<sound> load_sound(const std::experimental::filesystem::path& filepath);
+				handle<voice> play_sound(const handle<sound>& sound, const handle<submix>& submix = handle<std::experimental::audio::submix>{}, bool paused = false);
 
 			private:
 				FMOD::System* m_system;
+				std::unordered_map<int, sound> m_sounds;
+				std::unordered_map<int, voice> m_channels;
+				int m_next_id = 0;
 			};
 
 			enum class time_unit
@@ -60,12 +108,12 @@ namespace std
 				pcm_samples,
 			};
 
-			class channel
+			class voice
 			{
 			public:
-				std::weak_ptr<submix> get_submix() const;
-				std::weak_ptr<sound> get_sound() const;
-				std::weak_ptr<device> get_device() const;
+				handle<submix> get_submix() const;
+				handle<sound> get_sound() const;
+				device* get_device() const;
 
 				float get_audibility() const;
 				int get_frequency() const;
@@ -77,6 +125,7 @@ namespace std
 				float get_pan() const;
 				bool is_muted() const;
 				bool is_paused() const;
+				bool is_playing() const;
 
 				void set_loop_count(int count);
 				void set_pitch(float pitch);
@@ -90,19 +139,21 @@ namespace std
 
 			private:
 				friend class device;
-				channel();
+				device* m_device;
+				FMOD::Channel* m_channel;
+				voice(device* device, FMOD::Channel* channel);
 			};
 
 			class submix
 			{
 			public:
 				int num_channels() const;
-				std::weak_ptr<channel> get_channel(int index) const;
+				handle<voice> get_channel(int index) const;
 
 				int num_submixes() const;
-				std::weak_ptr<submix> get_submix(int index) const;
-				std::weak_ptr<submix> get_parent() const;
-				std::weak_ptr<device> get_device() const;
+				handle<submix> get_submix(int index) const;
+				handle<submix> get_parent() const;
+				device* get_device() const;
 
 				float get_audibility() const;
 				float get_pitch() const;
@@ -138,11 +189,13 @@ namespace std
 				int get_frequency() const;
 				int get_channels() const;
 				format get_format() const;
-				std::weak_ptr<device> get_device() const;
+				device* get_device() const;
 
 			private:
 				friend class device;
-				sound();
+				device* m_device;
+				FMOD::Sound* m_sound;
+				sound(device* device, FMOD::Sound* sound);
 			};
 		}
 	}

@@ -1,2 +1,6 @@
 TODO:
-- Remove handle<T>.  Return std::unique_ptr<T> instead.
+- Figure out clean API as FMOD wrapper
+- Figure out clean API independent of FMOD wrapper
+- Resurrect submix
+- Bring in waveform generators
+- Bring in DSP effects

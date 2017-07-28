@@ -2,10 +2,6 @@
 #include "fmod/fmod.hpp"
 #include "fmod/fmod_errors.h"
 
-std::unordered_map<int, std::experimental::audio::sound> std::experimental::audio::handle<std::experimental::audio::sound>::default_lookup;
-std::unordered_map<int, std::experimental::audio::voice> std::experimental::audio::handle<std::experimental::audio::voice>::default_lookup;
-std::unordered_map<int, std::experimental::audio::submix> std::experimental::audio::handle<std::experimental::audio::submix>::default_lookup;
-
 std::experimental::audio::device::device()
 {
 	FMOD_RESULT result = FMOD::System_Create(&m_system);
@@ -53,7 +49,7 @@ void std::experimental::audio::device::set_driver(int index)
 		throw std::exception(FMOD_ErrorString(result));
 }
 
-auto std::experimental::audio::device::load_sound(const std::experimental::filesystem::path& filepath) -> handle<sound>
+auto std::experimental::audio::device::load_sound(const std::experimental::filesystem::path& filepath) -> std::shared_ptr<sound>
 {
 	FMOD::Sound* fmod_sound = nullptr;
 	FMOD_RESULT result = m_system->createSound(filepath.generic_u8string().c_str(), FMOD_LOOP_NORMAL | FMOD_2D | FMOD_CREATESAMPLE, nullptr, &fmod_sound);
@@ -62,37 +58,22 @@ auto std::experimental::audio::device::load_sound(const std::experimental::files
 
 	fmod_sound->setLoopCount(0);
 
-	auto key = m_next_id++;
-	m_sounds.insert(std::make_pair(key, sound{ this, fmod_sound }));
-	return handle<sound>{&m_sounds, key};
+	return make_shared<sound>(this, fmod_sound, sound::constructor_tag{});
 }
 
-auto std::experimental::audio::device::play_sound(const handle<sound>& sound, const handle<submix>& submix, bool paused) -> handle<voice>
+auto std::experimental::audio::device::play_sound(const std::shared_ptr<sound>& sound, bool paused) -> std::unique_ptr<voice>
 {
-	auto* actual_sound = sound.get();
-	if (actual_sound == nullptr)
-		return handle<voice>{};
-
-	auto* actual_submix = submix.get();
-
 	FMOD::Channel* fmod_channel = nullptr;
-	FMOD_RESULT result = m_system->playSound(actual_sound->m_sound, nullptr, paused, &fmod_channel);
+	FMOD_RESULT result = m_system->playSound(sound->m_sound, nullptr, paused, &fmod_channel);
 	if (result != FMOD_OK)
 		throw std::exception(FMOD_ErrorString(result));
 
-	auto key = m_next_id++;
-	m_channels.insert(std::make_pair(key, voice{ this, fmod_channel }));
-	return handle<voice>{&m_channels, key};
+	return make_unique<voice>(this, sound, fmod_channel, voice::constructor_tag{});
 }
 
-auto std::experimental::audio::voice::get_submix() const -> handle<submix>
+auto std::experimental::audio::voice::get_sound() const -> std::shared_ptr<sound>
 {
-	return handle<submix>();
-}
-
-auto std::experimental::audio::voice::get_sound() const -> handle<sound>
-{
-	return handle<sound>();
+	return m_sound.lock();
 }
 
 auto std::experimental::audio::voice::get_device() const -> device*
@@ -184,84 +165,10 @@ void std::experimental::audio::voice::stop()
 {
 }
 
-std::experimental::audio::voice::voice(device * device, FMOD::Channel * channel) :
+std::experimental::audio::voice::voice(device * device, const std::shared_ptr<sound>& sound, FMOD::Channel * channel, constructor_tag) :
 	m_device(device),
+	m_sound(sound),
 	m_channel(channel)
-{
-}
-
-int std::experimental::audio::submix::num_channels() const
-{
-	return 0;
-}
-
-auto std::experimental::audio::submix::get_channel(int index) const -> handle<voice>
-{
-	return handle<voice>();
-}
-
-int std::experimental::audio::submix::num_submixes() const
-{
-	return 0;
-}
-
-auto std::experimental::audio::submix::get_submix(int index) const -> handle<submix>
-{
-	return handle<submix>();
-}
-
-auto std::experimental::audio::submix::get_parent() const -> handle<submix>
-{
-	return handle<submix>();
-}
-
-auto std::experimental::audio::submix::get_device() const -> device*
-{
-	return nullptr;
-}
-
-float std::experimental::audio::submix::get_audibility() const
-{
-	return 0.0f;
-}
-
-float std::experimental::audio::submix::get_pitch() const
-{
-	return 0.0f;
-}
-
-float std::experimental::audio::submix::get_volume() const
-{
-	return 0.0f;
-}
-
-bool std::experimental::audio::submix::is_muted() const
-{
-	return false;
-}
-
-bool std::experimental::audio::submix::is_paused() const
-{
-	return false;
-}
-
-void std::experimental::audio::submix::set_pitch(float pitch)
-{
-}
-
-void std::experimental::audio::submix::set_volume(float volume)
-{
-}
-
-void std::experimental::audio::submix::set_mute(bool mute)
-{
-}
-
-void std::experimental::audio::submix::set_paused(bool pause)
-{
-}
-
-void std::experimental::audio::submix::release()
 {
 }
 
@@ -285,7 +192,7 @@ auto std::experimental::audio::sound::get_device() const -> device*
 	return m_device;
 }
 
-std::experimental::audio::sound::sound(device* device, FMOD::Sound* sound) :
+std::experimental::audio::sound::sound(device* device, FMOD::Sound* sound, constructor_tag) :
 	m_device(device),
 	m_sound(sound)
 {

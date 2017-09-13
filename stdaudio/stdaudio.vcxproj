@@ -168,6 +168,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="audio.h" />
+    <ClInclude Include="audio_v1.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\TODO.txt" />

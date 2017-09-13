@@ -49,151 +49,188 @@ void std::experimental::audio::device::set_driver(int index)
 		throw std::exception(FMOD_ErrorString(result));
 }
 
-auto std::experimental::audio::device::load_sound(const std::experimental::filesystem::path& filepath) -> std::shared_ptr<sound>
+static FMOD_SOUND_FORMAT ConvertSoundFormat(std::experimental::audio::memory_buffer_format format)
 {
+	switch (format)
+	{
+	case std::experimental::audio::memory_buffer_format::pcm8:
+		return FMOD_SOUND_FORMAT_PCM8;
+	case std::experimental::audio::memory_buffer_format::pcm16:
+		return FMOD_SOUND_FORMAT_PCM16;
+	case std::experimental::audio::memory_buffer_format::pcm24:
+		return FMOD_SOUND_FORMAT_PCM24;
+	case std::experimental::audio::memory_buffer_format::pcm32:
+		return FMOD_SOUND_FORMAT_PCM32;
+	case std::experimental::audio::memory_buffer_format::pcmfloat:
+		return FMOD_SOUND_FORMAT_PCMFLOAT;
+	default:
+		break;
+	}
+	return FMOD_SOUND_FORMAT_NONE;
+}
+
+auto std::experimental::audio::device::play_sound(const std::shared_ptr<source>& sound, bool paused) -> std::unique_ptr<voice>
+{
+	auto audio_data = sound->get_audio_data();
+	if (audio_data.data.data == nullptr)
+		return nullptr;
+
 	FMOD::Sound* fmod_sound = nullptr;
-	FMOD_RESULT result = m_system->createSound(filepath.generic_u8string().c_str(), FMOD_LOOP_NORMAL | FMOD_2D | FMOD_CREATESAMPLE, nullptr, &fmod_sound);
-	if (result != FMOD_OK)
-		throw std::exception(FMOD_ErrorString(result));
+	FMOD_CREATESOUNDEXINFO ex_info;
+	ex_info.cbsize = sizeof(FMOD_CREATESOUNDEXINFO);
+	ex_info.format = ConvertSoundFormat(audio_data.description.format);
+	ex_info.defaultfrequency = audio_data.description.frequency;
+	ex_info.numchannels = audio_data.description.num_channels;
+	m_system->createSound(
+		reinterpret_cast<const char*>(audio_data.data.data),
+		FMOD_OPENMEMORY_POINT | FMOD_LOOP_NORMAL | FMOD_2D | FMOD_OPENRAW,
+		&ex_info,
+		&fmod_sound);
 
 	fmod_sound->setLoopCount(0);
 
-	return make_shared<sound>(this, fmod_sound, sound::constructor_tag{});
-}
-
-auto std::experimental::audio::device::play_sound(const std::shared_ptr<sound>& sound, bool paused) -> std::unique_ptr<voice>
-{
 	FMOD::Channel* fmod_channel = nullptr;
-	FMOD_RESULT result = m_system->playSound(sound->m_sound, nullptr, paused, &fmod_channel);
+	FMOD_RESULT result = m_system->playSound(fmod_sound, nullptr, paused, &fmod_channel);
 	if (result != FMOD_OK)
 		throw std::exception(FMOD_ErrorString(result));
 
-	return make_unique<voice>(this, sound, fmod_channel, voice::constructor_tag{});
+	return make_unique<voice>(fmod_channel, fmod_sound, sound, voice::constructor_tag{});
 }
 
-auto std::experimental::audio::voice::get_sound() const -> std::shared_ptr<sound>
-{
-	return m_sound.lock();
-}
-
-auto std::experimental::audio::voice::get_device() const -> device*
-{
-	return nullptr;
-}
-
-float std::experimental::audio::voice::get_audibility() const
-{
-	return 0.0f;
-}
-
-int std::experimental::audio::voice::get_frequency() const
-{
-	return 0;
-}
-
-unsigned long long std::experimental::audio::voice::get_playback_position(time_unit unit) const
-{
-	return 0;
-}
-
-int std::experimental::audio::voice::get_loop_count() const
-{
-	return 0;
-}
-
-float std::experimental::audio::voice::get_pitch() const
-{
-	return 0.0f;
-}
-
-float std::experimental::audio::voice::get_volume() const
-{
-	return 0.0f;
-}
-
-float std::experimental::audio::voice::get_pan() const
-{
-	return 0.0f;
-}
-
-bool std::experimental::audio::voice::is_muted() const
-{
-	return false;
-}
-
-bool std::experimental::audio::voice::is_paused() const
-{
-	return false;
-}
-
-bool std::experimental::audio::voice::is_playing() const
-{
-	bool playing = false;
-	m_channel->isPlaying(&playing);
-	return playing;
-}
-
-void std::experimental::audio::voice::set_loop_count(int count)
+std::experimental::audio::voice::voice(
+	FMOD::Channel* channel,
+	FMOD::Sound* fmod_sound,
+	const std::shared_ptr<source>& sound,
+	constructor_tag) :
+	m_channel(channel),
+	m_sound(fmod_sound),
+	m_source(sound)
 {
 }
 
-void std::experimental::audio::voice::set_pitch(float pitch)
+std::experimental::audio::voice::~voice()
 {
-}
-
-void std::experimental::audio::voice::set_volume(float volume)
-{
-}
-
-void std::experimental::audio::voice::set_pan(float pan)
-{
-}
-
-void std::experimental::audio::voice::set_mute(bool mute)
-{
-}
-
-void std::experimental::audio::voice::set_paused(bool pause)
-{
-}
-
-void std::experimental::audio::voice::set_playback_position(unsigned long long position, time_unit unit)
-{
+	m_channel->stop();
+	m_sound->release();
 }
 
 void std::experimental::audio::voice::stop()
 {
+	m_channel->stop();
 }
 
-std::experimental::audio::voice::voice(device * device, const std::shared_ptr<sound>& sound, FMOD::Channel * channel, constructor_tag) :
-	m_device(device),
-	m_sound(sound),
-	m_channel(channel)
+void std::experimental::audio::voice::pause()
 {
+	m_channel->setPaused(true);
 }
 
-int std::experimental::audio::sound::get_frequency() const
+void std::experimental::audio::voice::resume()
 {
-	return 0;
+	m_channel->setPaused(false);
 }
 
-int std::experimental::audio::sound::get_channels() const
+void std::experimental::audio::voice::set_volume(float volume)
 {
-	return 0;
+	m_channel->setVolume(volume);
 }
 
-auto std::experimental::audio::sound::get_format() const -> format
+void std::experimental::audio::voice::set_pitch(float pitch)
 {
-	return format();
+	m_channel->setPitch(pitch);
 }
 
-auto std::experimental::audio::sound::get_device() const -> device*
+void std::experimental::audio::voice::set_pan(float pan_value)
 {
-	return m_device;
+	pan = pan_value;
+	m_channel->setPan(pan);
 }
 
-std::experimental::audio::sound::sound(device* device, FMOD::Sound* sound, constructor_tag) :
-	m_device(device),
-	m_sound(sound)
+float std::experimental::audio::voice::get_volume() const
 {
+	float volume = 0.0f;
+	m_channel->getVolume(&volume);
+	return volume;
+}
+
+float std::experimental::audio::voice::get_pitch() const
+{
+	float pitch = 0.0f;
+	m_channel->getPitch(&pitch);
+	return pitch;
+}
+
+float std::experimental::audio::voice::get_pan() const
+{
+	return pan;
+}
+
+auto std::experimental::audio::buffer::get_audio_data() const -> memory_buffer_data
+{
+	memory_buffer_data return_value;
+	return_value.description = m_description;
+	if (auto v = std::get_if<std::vector<std::byte>>(&m_data))
+	{
+		return_value.data = memory_buffer(v->data(), v->size());
+	}
+	if (auto v = std::get_if<memory_buffer>(&m_data))
+	{
+		return_value.data = *v;
+	}
+	return return_value;
+}
+
+static std::experimental::audio::memory_buffer_format ConvertSoundFormat(FMOD_SOUND_FORMAT format)
+{
+	switch (format)
+	{
+	case FMOD_SOUND_FORMAT_PCM8:
+		return std::experimental::audio::memory_buffer_format::pcm8;
+	case FMOD_SOUND_FORMAT_PCM16:
+		return std::experimental::audio::memory_buffer_format::pcm16;
+	case FMOD_SOUND_FORMAT_PCM24:
+		return std::experimental::audio::memory_buffer_format::pcm24;
+	case FMOD_SOUND_FORMAT_PCM32:
+		return std::experimental::audio::memory_buffer_format::pcm32;
+	case FMOD_SOUND_FORMAT_PCMFLOAT:
+		return std::experimental::audio::memory_buffer_format::pcmfloat;
+	default:
+		break;
+	}
+	throw std::exception("Unkown format");
+}
+
+std::shared_ptr<std::experimental::audio::buffer> std::experimental::audio::load_from_disk(const std::experimental::filesystem::path& filepath)
+{
+	FMOD::System* pLoadSystem = nullptr;
+	FMOD::System_Create(&pLoadSystem);
+	pLoadSystem->setOutput(FMOD_OUTPUTTYPE_NOSOUND_NRT);
+	pLoadSystem->init(1, FMOD_INIT_STREAM_FROM_UPDATE | FMOD_INIT_MIX_FROM_UPDATE | FMOD_INIT_THREAD_UNSAFE, nullptr);
+
+	FMOD::Sound* pSound = nullptr;
+	pLoadSystem->createSound(filepath.generic_u8string().c_str(), FMOD_OPENONLY, nullptr, &pSound);
+
+	FMOD_SOUND_FORMAT fmod_format = FMOD_SOUND_FORMAT_NONE;
+	int num_channels = 0;
+	pSound->getFormat(nullptr, &fmod_format, &num_channels, nullptr);
+
+	float frequency;
+	pSound->getDefaults(&frequency, nullptr);
+
+	pSound->readData()
+}
+
+std::shared_ptr<std::experimental::audio::buffer> std::experimental::audio::load_from_memory(const memory_buffer& buffer, const memory_buffer_description& description, bool copy)
+{
+	auto return_value = std::make_shared<std::experimental::audio::buffer>();
+	return_value->m_description = description;
+	if (copy)
+	{
+		std::vector<std::byte> copied_buffer(buffer.size);
+		std::copy(buffer.data, buffer.data + buffer.size, copied_buffer.begin());
+	}
+	else
+	{
+		return_value->m_data = buffer;
+	}
+	return return_value;
 }

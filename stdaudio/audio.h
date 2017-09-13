@@ -5,6 +5,9 @@
 #include <filesystem>
 #include <unordered_map>
 #include <cstdint>
+#include <cstddef>
+#include <variant>
+#include <vector>
 
 namespace FMOD
 {
@@ -22,7 +25,10 @@ namespace std
 		{
 			class device;
 			class voice;
-			class sound;
+			class source;
+			class buffer;
+			class submix;
+			class dsp;
 
 			struct guid
 			{
@@ -48,87 +54,88 @@ namespace std
 				driver_info get_driver(int index) const;
 				void set_driver(int index);
 
-				std::shared_ptr<sound> load_sound(const std::experimental::filesystem::path& filepath);
-				std::unique_ptr<voice> play_sound(const std::shared_ptr<sound>& sound, bool paused = false);
+				std::unique_ptr<voice> play_sound(const std::shared_ptr<source>& sound, bool paused = false);
 
 			private:
 				FMOD::System* m_system;
 			};
 
-			enum class time_unit
-			{
-				milliseconds,
-				pcm_samples,
-			};
-
 			class voice
 			{
 			private:
-				struct constructor_tag { explicit constructor_tag() = default; };
-
+				struct constructor_tag {};
 			public:
-				voice(device* device, const std::shared_ptr<sound>& sound, FMOD::Channel* channel, constructor_tag);
-
-				std::shared_ptr<sound> get_sound() const;
-				device* get_device() const;
-
-				float get_audibility() const;
-				int get_frequency() const;
-				unsigned long long get_playback_position(time_unit unit) const;
-
-				int get_loop_count() const;
-				float get_pitch() const;
-				float get_volume() const;
-				float get_pan() const;
-				bool is_muted() const;
-				bool is_paused() const;
-				bool is_playing() const;
-
-				void set_loop_count(int count);
-				void set_pitch(float pitch);
-				void set_volume(float volume);
-				void set_pan(float pan);
-				void set_mute(bool mute);
-				void set_paused(bool pause);
-				void set_playback_position(unsigned long long position, time_unit unit);
-
+				voice(FMOD::Channel* channel, FMOD::Sound* fmod_sound, const std::shared_ptr<source>& sound, constructor_tag);
+				~voice();
 				void stop();
+				void pause();
+				void resume();
+				void set_volume(float volume);
+				void set_pitch(float pitch);
+				void set_pan(float pan);
+
+				float get_volume() const;
+				float get_pitch() const;
+				float get_pan() const;
 
 			private:
 				friend class device;
-				device* m_device;
-				std::weak_ptr<sound> m_sound;
 				FMOD::Channel* m_channel;
-			};
-
-			class sound
-			{
-			private:
-				struct constructor_tag { explicit constructor_tag() = default; };
-
-			public:
-				sound(device* device, FMOD::Sound* sound, constructor_tag);
-
-				enum class format
-				{
-					unknown,
-					pcm_8,
-					pcm_16,
-					pcm_24,
-					pcm_32,
-					pcm_float,
-				};
-
-				int get_frequency() const;
-				int get_channels() const;
-				format get_format() const;
-				device* get_device() const;
-
-			private:
-				friend class device;
-				device* m_device;
 				FMOD::Sound* m_sound;
+				std::shared_ptr<source> m_source;
+				float pan = 0.0f;
 			};
+
+			struct memory_buffer
+			{
+				memory_buffer() = default;
+				memory_buffer(const std::byte* indata, size_t insize) : data(indata), size(insize) {}
+				const std::byte* data = nullptr;
+				size_t size = 0;
+			};
+
+			enum class memory_buffer_format
+			{
+				pcm8,
+				pcm16,
+				pcm24,
+				pcm32,
+				pcmfloat,
+			};
+
+			struct memory_buffer_description
+			{
+				memory_buffer_format format;
+				unsigned int num_channels;
+				unsigned int frequency;
+			};
+
+			struct memory_buffer_data
+			{
+				memory_buffer data;
+				memory_buffer_description description;
+			};
+
+			class source
+			{
+			public:
+				virtual ~source() {}
+				virtual memory_buffer_data get_audio_data() const = 0;
+			};
+
+			class buffer : public source
+			{
+			public:
+				memory_buffer_data get_audio_data() const override;
+
+			private:
+				friend std::shared_ptr<buffer> load_from_memory(const memory_buffer&, const memory_buffer_description&, bool);
+				std::variant<std::vector<std::byte>, memory_buffer> m_data;
+				memory_buffer_description m_description;
+			};
+
+			std::shared_ptr<buffer> load_from_disk(const std::experimental::filesystem::path& filepath);
+			std::shared_ptr<buffer> load_from_memory(const memory_buffer& buffer, const memory_buffer_description& description, bool copy = true);
 		}
 	}
 }

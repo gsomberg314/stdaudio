@@ -210,6 +210,8 @@ static std::experimental::audio::memory_buffer_format ConvertSoundFormat(FMOD_SO
 
 std::shared_ptr<std::experimental::audio::buffer> std::experimental::audio::load_from_disk(const std::experimental::filesystem::path& filepath)
 {
+	// TODO: This is pretty horrible.  We create an entire FMOD System object just to decompress a single sound.
+	// This would be okay for a sound or two, but at scale it will explode horribly.
 	FMOD::System* pLoadSystem = nullptr;
 	FMOD::System_Create(&pLoadSystem);
 	pLoadSystem->setOutput(FMOD_OUTPUTTYPE_NOSOUND_NRT);

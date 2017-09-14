@@ -75,13 +75,15 @@ auto std::experimental::audio::device::play_sound(const std::shared_ptr<source>&
 	if (audio_data.data.data == nullptr)
 		return nullptr;
 
+	FMOD_RESULT result;
 	FMOD::Sound* fmod_sound = nullptr;
-	FMOD_CREATESOUNDEXINFO ex_info;
+	FMOD_CREATESOUNDEXINFO ex_info = { 0 };
 	ex_info.cbsize = sizeof(FMOD_CREATESOUNDEXINFO);
 	ex_info.format = ConvertSoundFormat(audio_data.description.format);
 	ex_info.defaultfrequency = audio_data.description.frequency;
 	ex_info.numchannels = audio_data.description.num_channels;
-	m_system->createSound(
+	ex_info.length = audio_data.data.size;
+	result = m_system->createSound(
 		reinterpret_cast<const char*>(audio_data.data.data),
 		FMOD_OPENMEMORY_POINT | FMOD_LOOP_NORMAL | FMOD_2D | FMOD_OPENRAW,
 		&ex_info,
@@ -90,7 +92,7 @@ auto std::experimental::audio::device::play_sound(const std::shared_ptr<source>&
 	fmod_sound->setLoopCount(0);
 
 	FMOD::Channel* fmod_channel = nullptr;
-	FMOD_RESULT result = m_system->playSound(fmod_sound, nullptr, paused, &fmod_channel);
+	result = m_system->playSound(fmod_sound, nullptr, paused, &fmod_channel);
 	if (result != FMOD_OK)
 		throw std::exception(FMOD_ErrorString(result));
 
@@ -164,6 +166,13 @@ float std::experimental::audio::voice::get_pan() const
 	return pan;
 }
 
+bool std::experimental::audio::voice::is_playing() const
+{
+	bool playing = false;
+	m_channel->isPlaying(&playing);
+	return playing;
+}
+
 auto std::experimental::audio::buffer::get_audio_data() const -> memory_buffer_data
 {
 	memory_buffer_data return_value;
@@ -216,7 +225,24 @@ std::shared_ptr<std::experimental::audio::buffer> std::experimental::audio::load
 	float frequency;
 	pSound->getDefaults(&frequency, nullptr);
 
-	pSound->readData()
+	unsigned int lengthbytes = 0;
+	pSound->getLength(&lengthbytes, FMOD_TIMEUNIT_PCMBYTES);
+
+	auto return_value = std::make_shared<std::experimental::audio::buffer>();
+	return_value->m_description.format = ConvertSoundFormat(fmod_format);
+	return_value->m_description.frequency = static_cast<unsigned int>(frequency);
+	return_value->m_description.num_channels = static_cast<unsigned int>(num_channels);
+
+	std::vector<std::byte> data(lengthbytes);
+	unsigned int bytes_read = 0;
+	pSound->readData(data.data(), lengthbytes, &bytes_read);
+	data.resize(bytes_read);
+	return_value->m_data = std::move(data);
+
+	pSound->release();
+	pLoadSystem->release();
+
+	return return_value;
 }
 
 std::shared_ptr<std::experimental::audio::buffer> std::experimental::audio::load_from_memory(const memory_buffer& buffer, const memory_buffer_description& description, bool copy)

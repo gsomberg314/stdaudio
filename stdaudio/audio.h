@@ -78,6 +78,8 @@ namespace std
 				float get_pitch() const;
 				float get_pan() const;
 
+				bool is_playing() const;
+
 			private:
 				friend class device;
 				FMOD::Channel* m_channel;
@@ -129,6 +131,7 @@ namespace std
 				memory_buffer_data get_audio_data() const override;
 
 			private:
+				friend std::shared_ptr<buffer> load_from_disk(const std::experimental::filesystem::path&);
 				friend std::shared_ptr<buffer> load_from_memory(const memory_buffer&, const memory_buffer_description&, bool);
 				std::variant<std::vector<std::byte>, memory_buffer> m_data;
 				memory_buffer_description m_description;

@@ -8,11 +8,11 @@ using namespace std::literals::chrono_literals;
 int main()
 {
 	device audio_device;
-	//auto tada = audio_device.load_sound(R"(C:\Windows\Media\tada.wav)");
-	//auto voice = audio_device.play_sound(tada);
-	//while (voice->is_playing())
-	//{
-	//	std::this_thread::sleep_for(100ms);
-	//}
+	auto tada = load_from_disk(R"(C:\Windows\Media\tada.wav)");
+	auto voice = audio_device.play_sound(tada);
+	while (voice->is_playing())
+	{
+		std::this_thread::sleep_for(100ms);
+	}
     return 0;
 }

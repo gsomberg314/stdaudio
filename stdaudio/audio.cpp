@@ -99,6 +99,13 @@ auto std::experimental::audio::device::play_sound(const std::shared_ptr<source>&
 	return make_unique<voice>(fmod_channel, fmod_sound, sound, voice::constructor_tag{});
 }
 
+auto std::experimental::audio::device::create_submix() -> std::unique_ptr<submix>
+{
+	FMOD::ChannelGroup* fmod_channelgroup = nullptr;
+	m_system->createChannelGroup(nullptr, &fmod_channelgroup);
+	return std::make_unique<submix>(fmod_channelgroup, submix::constructor_tag{});
+}
+
 std::experimental::audio::voice::voice(
 	FMOD::Channel* channel,
 	FMOD::Sound* fmod_sound,
@@ -171,6 +178,11 @@ bool std::experimental::audio::voice::is_playing() const
 	bool playing = false;
 	m_channel->isPlaying(&playing);
 	return playing;
+}
+
+void std::experimental::audio::voice::assign_to_submix(submix& parent)
+{
+	m_channel->setChannelGroup(parent.m_channelgroup);
 }
 
 auto std::experimental::audio::buffer::get_audio_data() const -> memory_buffer_data
@@ -261,4 +273,26 @@ std::shared_ptr<std::experimental::audio::buffer> std::experimental::audio::load
 		return_value->m_data = buffer;
 	}
 	return return_value;
+}
+
+std::experimental::audio::submix::submix(FMOD::ChannelGroup* channelgroup, constructor_tag) :
+	m_channelgroup(channelgroup)
+{
+}
+
+float std::experimental::audio::submix::get_volume() const
+{
+	float volume = 0.0f;
+	m_channelgroup->getVolume(&volume);
+	return volume;
+}
+
+void std::experimental::audio::submix::set_volume(float volume)
+{
+	m_channelgroup->setVolume(volume);
+}
+
+void std::experimental::audio::submix::assign_to_submix(submix& parent)
+{
+	parent.m_channelgroup->addGroup(m_channelgroup);
 }

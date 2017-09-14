@@ -55,6 +55,7 @@ namespace std
 				void set_driver(int index);
 
 				std::unique_ptr<voice> play_sound(const std::shared_ptr<source>& sound, bool paused = false);
+				std::unique_ptr<submix> create_submix();
 
 			private:
 				FMOD::System* m_system;
@@ -79,6 +80,8 @@ namespace std
 				float get_pan() const;
 
 				bool is_playing() const;
+
+				void assign_to_submix(submix& parent);
 
 			private:
 				friend class device;
@@ -139,6 +142,25 @@ namespace std
 
 			std::shared_ptr<buffer> load_from_disk(const std::experimental::filesystem::path& filepath);
 			std::shared_ptr<buffer> load_from_memory(const memory_buffer& buffer, const memory_buffer_description& description, bool copy = true);
+
+			class submix
+			{
+			private:
+				struct constructor_tag {};
+			public:
+				submix(FMOD::ChannelGroup* channelgroup, constructor_tag);
+
+				float get_volume() const;
+
+				void set_volume(float volume);
+
+				void assign_to_submix(submix& parent);
+
+			private:
+				friend class device;
+				friend class voice;
+				FMOD::ChannelGroup* m_channelgroup;
+			};
 		}
 	}
 }

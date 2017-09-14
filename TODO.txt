@@ -1,6 +1,6 @@
 TODO:
-- Figure out clean API as FMOD wrapper
-- Figure out clean API independent of FMOD wrapper
-- Resurrect submix
-- Bring in waveform generators
-- Bring in DSP effects
+- Test submix
+- Implement dsp
+- Implement LPF using https://www.quora.com/Whats-the-C-coding-for-a-low-pass-filter
+- Make examples for slides
+- Implement file_stream and synth

@@ -96,21 +96,23 @@ auto std::experimental::audio::device::play_sound(const std::shared_ptr<source>&
 	if (result != FMOD_OK)
 		throw std::exception(FMOD_ErrorString(result));
 
-	return make_unique<voice>(fmod_channel, fmod_sound, sound, voice::constructor_tag{});
+	return make_unique<voice>(this, fmod_channel, fmod_sound, sound, voice::constructor_tag{});
 }
 
 auto std::experimental::audio::device::create_submix() -> std::unique_ptr<submix>
 {
 	FMOD::ChannelGroup* fmod_channelgroup = nullptr;
 	m_system->createChannelGroup(nullptr, &fmod_channelgroup);
-	return std::make_unique<submix>(fmod_channelgroup, submix::constructor_tag{});
+	return std::make_unique<submix>(this, fmod_channelgroup, submix::constructor_tag{});
 }
 
 std::experimental::audio::voice::voice(
+	device* dev,
 	FMOD::Channel* channel,
 	FMOD::Sound* fmod_sound,
 	const std::shared_ptr<source>& sound,
 	constructor_tag) :
+	m_device(dev),
 	m_channel(channel),
 	m_sound(fmod_sound),
 	m_source(sound)
@@ -275,9 +277,15 @@ std::shared_ptr<std::experimental::audio::buffer> std::experimental::audio::load
 	return return_value;
 }
 
-std::experimental::audio::submix::submix(FMOD::ChannelGroup* channelgroup, constructor_tag) :
+std::experimental::audio::submix::submix(device* dev, FMOD::ChannelGroup* channelgroup, constructor_tag) :
+	m_device(dev),
 	m_channelgroup(channelgroup)
 {
+}
+
+std::experimental::audio::submix::~submix()
+{
+	m_channelgroup->release();
 }
 
 float std::experimental::audio::submix::get_volume() const
@@ -295,4 +303,19 @@ void std::experimental::audio::submix::set_volume(float volume)
 void std::experimental::audio::submix::assign_to_submix(submix& parent)
 {
 	parent.m_channelgroup->addGroup(m_channelgroup);
+}
+
+std::experimental::audio::effect_instance::~effect_instance()
+{
+	m_dsp->release();
+}
+
+void std::experimental::audio::effect_instance::create_dsp(device* dev, FMOD::ChannelControl* ChannelControl)
+{
+	FMOD_DSP_DESCRIPTION description = { 0 };
+	// TODO: Implement read callback
+	//description.read
+	dev->m_system->createDSP(&description, &m_dsp);
+
+	ChannelControl->addDSP(0, m_dsp);
 }

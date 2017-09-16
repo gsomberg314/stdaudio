@@ -14,7 +14,9 @@ namespace FMOD
 	class System;
 	class Channel;
 	class ChannelGroup;
+	class ChannelControl;
 	class Sound;
+	class DSP;
 }
 
 namespace std
@@ -28,7 +30,8 @@ namespace std
 			class source;
 			class buffer;
 			class submix;
-			class dsp;
+			class effect;
+			class effect_instancew;
 
 			struct guid
 			{
@@ -58,6 +61,7 @@ namespace std
 				std::unique_ptr<submix> create_submix();
 
 			private:
+				friend class effect_instance;
 				FMOD::System* m_system;
 			};
 
@@ -66,8 +70,9 @@ namespace std
 			private:
 				struct constructor_tag {};
 			public:
-				voice(FMOD::Channel* channel, FMOD::Sound* fmod_sound, const std::shared_ptr<source>& sound, constructor_tag);
+				voice(device* dev, FMOD::Channel* channel, FMOD::Sound* fmod_sound, const std::shared_ptr<source>& sound, constructor_tag);
 				~voice();
+
 				void stop();
 				void pause();
 				void resume();
@@ -83,11 +88,21 @@ namespace std
 
 				void assign_to_submix(submix& parent);
 
+				template<typename T, typename... Ts>
+				std::weak_ptr<T> add_effect(Ts&& ts...)
+				{
+					m_effects.emplace_back(make_shared<T>(std::forward<Ts>(ts)...));
+					m_effects.back()->create_dsp(m_channel);
+					return m_effects.back();
+				}
+
 			private:
 				friend class device;
+				device* m_device;
 				FMOD::Channel* m_channel;
 				FMOD::Sound* m_sound;
 				std::shared_ptr<source> m_source;
+				std::vector<std::shared_ptr<effect_instance>> m_effects;
 				float pan = 0.0f;
 			};
 
@@ -148,7 +163,8 @@ namespace std
 			private:
 				struct constructor_tag {};
 			public:
-				submix(FMOD::ChannelGroup* channelgroup, constructor_tag);
+				submix(device* dev, FMOD::ChannelGroup* channelgroup, constructor_tag);
+				~submix();
 
 				float get_volume() const;
 
@@ -156,10 +172,44 @@ namespace std
 
 				void assign_to_submix(submix& parent);
 
+				template<typename T, typename... Ts>
+				std::weak_ptr<T> add_effect(Ts&& ts...)
+				{
+					m_effects.emplace_back(make_shared<T>(std::forward<Ts>(ts)...));
+					m_effects.back()->create_dsp(m_channelgroup);
+					return m_effects.back();
+				}
+
 			private:
 				friend class device;
 				friend class voice;
+				device* m_device;
 				FMOD::ChannelGroup* m_channelgroup;
+			};
+
+			class effect
+			{
+			public:
+				virtual ~effect() {}
+				virtual void process(float* buffer_in, float* buffer_out, size_t length_samples, int num_channels) = 0;
+			};
+
+			class effect_instance
+			{
+			public:
+				~effect_instance();
+
+				template<typename T>
+				T* get_effect() { return static_cast<T*>(m_effect.get()); }
+				template<typename T>
+				const T* get_effect() const { return static_cast<T*>(m_effect.get()); }
+			private:
+				friend class voice;
+				friend class submix;
+				void create_dsp(device* dev, FMOD::ChannelControl* ChannelControl);
+
+				std::unique_ptr<effect> m_effect;
+				FMOD::DSP* m_dsp;
 			};
 		}
 	}

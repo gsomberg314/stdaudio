@@ -1,6 +1,6 @@
 TODO:
 - Test submix
-- Implement dsp
+- Implement dsp read callback
 - Implement LPF using https://www.quora.com/Whats-the-C-coding-for-a-low-pass-filter
 - Make examples for slides
 - Implement file_stream and synth

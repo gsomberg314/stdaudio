@@ -31,7 +31,7 @@ namespace std
 			class buffer;
 			class submix;
 			class effect;
-			class effect_instancew;
+			class effect_instance;
 
 			struct guid
 			{
@@ -89,14 +89,16 @@ namespace std
 				void assign_to_submix(submix& parent);
 
 				template<typename T, typename... Ts>
-				std::weak_ptr<T> add_effect(Ts&&... ts)
+				std::weak_ptr<effect_instance> add_effect(Ts&&... ts)
 				{
-					m_effects.emplace_back(make_shared<T>(std::forward<Ts>(ts)...));
-					m_effects.back()->create_dsp(m_channel);
+					m_effects.emplace_back(make_shared<effect_instance>(make_unique<T>(std::forward<Ts>(ts)...)));
+					create_dsp(m_effects.back().get());
 					return m_effects.back();
 				}
 
 			private:
+				void create_dsp(effect_instance*);
+
 				friend class device;
 				device* m_device;
 				FMOD::Channel* m_channel;
@@ -173,14 +175,16 @@ namespace std
 				void assign_to_submix(submix& parent);
 
 				template<typename T, typename... Ts>
-				std::weak_ptr<T> add_effect(Ts&&... ts)
+				std::weak_ptr<effect_instance> add_effect(Ts&&... ts)
 				{
-					m_effects.emplace_back(make_shared<T>(std::forward<Ts>(ts)...));
-					m_effects.back()->create_dsp(m_channelgroup);
+					m_effects.emplace_back(make_shared<effect_instance>(make_unique<T>(std::forward<Ts>(ts)...)));
+					create_dsp(m_effects.back().get());
 					return m_effects.back();
 				}
 
 			private:
+				void create_dsp(effect_instance*);
+
 				friend class device;
 				friend class voice;
 				device* m_device;
@@ -197,6 +201,7 @@ namespace std
 			class effect_instance
 			{
 			public:
+				effect_instance(std::unique_ptr<effect> e);
 				~effect_instance();
 
 				template<typename T>

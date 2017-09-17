@@ -187,6 +187,11 @@ void std::experimental::audio::voice::assign_to_submix(submix& parent)
 	m_channel->setChannelGroup(parent.m_channelgroup);
 }
 
+void std::experimental::audio::voice::create_dsp(effect_instance* instance)
+{
+	instance->create_dsp(m_device, m_channel);
+}
+
 auto std::experimental::audio::buffer::get_audio_data() const -> memory_buffer_data
 {
 	memory_buffer_data return_value;
@@ -305,6 +310,16 @@ void std::experimental::audio::submix::assign_to_submix(submix& parent)
 	parent.m_channelgroup->addGroup(m_channelgroup);
 }
 
+void std::experimental::audio::submix::create_dsp(effect_instance* instance)
+{
+	instance->create_dsp(m_device, m_channelgroup);
+}
+
+std::experimental::audio::effect_instance::effect_instance(std::unique_ptr<effect> e) :
+	m_effect(std::move(e))
+{
+}
+
 std::experimental::audio::effect_instance::~effect_instance()
 {
 	m_dsp->release();
@@ -319,7 +334,14 @@ static FMOD_RESULT F_CALLBACK EffectReadCallback(
 	int *outchannels
 )
 {
-	auto* EffectInstance = static_cast<std::experimental::audio::effect_instance*>(dsp_state->plugindata);
+	auto* DSP = reinterpret_cast<FMOD::DSP*>(dsp_state->instance);
+
+	void* pUserData = nullptr;
+	DSP->getUserData(&pUserData);
+	if(pUserData == nullptr)
+		return FMOD_ERR_INVALID_PARAM;
+
+	auto* EffectInstance = static_cast<std::experimental::audio::effect_instance*>(pUserData);
 	if (EffectInstance == nullptr)
 		return FMOD_ERR_INVALID_PARAM;
 

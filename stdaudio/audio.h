@@ -89,7 +89,7 @@ namespace std
 				void assign_to_submix(submix& parent);
 
 				template<typename T, typename... Ts>
-				std::weak_ptr<T> add_effect(Ts&& ts...)
+				std::weak_ptr<T> add_effect(Ts&&... ts)
 				{
 					m_effects.emplace_back(make_shared<T>(std::forward<Ts>(ts)...));
 					m_effects.back()->create_dsp(m_channel);
@@ -173,7 +173,7 @@ namespace std
 				void assign_to_submix(submix& parent);
 
 				template<typename T, typename... Ts>
-				std::weak_ptr<T> add_effect(Ts&& ts...)
+				std::weak_ptr<T> add_effect(Ts&&... ts)
 				{
 					m_effects.emplace_back(make_shared<T>(std::forward<Ts>(ts)...));
 					m_effects.back()->create_dsp(m_channelgroup);
@@ -203,6 +203,7 @@ namespace std
 				T* get_effect() { return static_cast<T*>(m_effect.get()); }
 				template<typename T>
 				const T* get_effect() const { return static_cast<T*>(m_effect.get()); }
+
 			private:
 				friend class voice;
 				friend class submix;

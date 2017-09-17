@@ -82,7 +82,7 @@ auto std::experimental::audio::device::play_sound(const std::shared_ptr<source>&
 	ex_info.format = ConvertSoundFormat(audio_data.description.format);
 	ex_info.defaultfrequency = audio_data.description.frequency;
 	ex_info.numchannels = audio_data.description.num_channels;
-	ex_info.length = audio_data.data.size;
+	ex_info.length = static_cast<unsigned int>(audio_data.data.size);
 	result = m_system->createSound(
 		reinterpret_cast<const char*>(audio_data.data.data),
 		FMOD_OPENMEMORY_POINT | FMOD_LOOP_NORMAL | FMOD_2D | FMOD_OPENRAW,
@@ -310,11 +310,36 @@ std::experimental::audio::effect_instance::~effect_instance()
 	m_dsp->release();
 }
 
+static FMOD_RESULT F_CALLBACK EffectReadCallback(
+	FMOD_DSP_STATE *dsp_state,
+	float *inbuffer,
+	float *outbuffer,
+	unsigned int length,
+	int inchannels,
+	int *outchannels
+)
+{
+	auto* EffectInstance = static_cast<std::experimental::audio::effect_instance*>(dsp_state->plugindata);
+	if (EffectInstance == nullptr)
+		return FMOD_ERR_INVALID_PARAM;
+
+	auto* Effect = EffectInstance->get_effect<std::experimental::audio::effect>();
+	if (Effect == nullptr)
+		return FMOD_ERR_INVALID_PARAM;
+
+	Effect->process(inbuffer, outbuffer, length, inchannels);
+	*outchannels = inchannels;
+	return FMOD_OK;
+}
+
 void std::experimental::audio::effect_instance::create_dsp(device* dev, FMOD::ChannelControl* ChannelControl)
 {
 	FMOD_DSP_DESCRIPTION description = { 0 };
-	// TODO: Implement read callback
-	//description.read
+	description.pluginsdkversion = FMOD_PLUGIN_SDK_VERSION;
+	description.numinputbuffers = 1;
+	description.numoutputbuffers = 1;
+	description.read = EffectReadCallback;
+	description.userdata = this;
 	dev->m_system->createDSP(&description, &m_dsp);
 
 	ChannelControl->addDSP(0, m_dsp);

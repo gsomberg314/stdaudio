@@ -5,13 +5,18 @@
 #include <filesystem>
 #include <unordered_map>
 #include <cstdint>
+#include <cstddef>
+#include <variant>
+#include <vector>
 
 namespace FMOD
 {
 	class System;
 	class Channel;
 	class ChannelGroup;
+	class ChannelControl;
 	class Sound;
+	class DSP;
 }
 
 namespace std
@@ -22,7 +27,11 @@ namespace std
 		{
 			class device;
 			class voice;
-			class sound;
+			class source;
+			class buffer;
+			class submix;
+			class effect;
+			class effect_instancew;
 
 			struct guid
 			{
@@ -48,86 +57,159 @@ namespace std
 				driver_info get_driver(int index) const;
 				void set_driver(int index);
 
-				std::shared_ptr<sound> load_sound(const std::experimental::filesystem::path& filepath);
-				std::unique_ptr<voice> play_sound(const std::shared_ptr<sound>& sound, bool paused = false);
+				std::unique_ptr<voice> play_sound(const std::shared_ptr<source>& sound, bool paused = false);
+				std::unique_ptr<submix> create_submix();
 
 			private:
+				friend class effect_instance;
 				FMOD::System* m_system;
-			};
-
-			enum class time_unit
-			{
-				milliseconds,
-				pcm_samples,
 			};
 
 			class voice
 			{
 			private:
-				struct constructor_tag { explicit constructor_tag() = default; };
-
+				struct constructor_tag {};
 			public:
-				voice(device* device, const std::shared_ptr<sound>& sound, FMOD::Channel* channel, constructor_tag);
-
-				std::shared_ptr<sound> get_sound() const;
-				device* get_device() const;
-
-				float get_audibility() const;
-				int get_frequency() const;
-				unsigned long long get_playback_position(time_unit unit) const;
-
-				int get_loop_count() const;
-				float get_pitch() const;
-				float get_volume() const;
-				float get_pan() const;
-				bool is_muted() const;
-				bool is_paused() const;
-				bool is_playing() const;
-
-				void set_loop_count(int count);
-				void set_pitch(float pitch);
-				void set_volume(float volume);
-				void set_pan(float pan);
-				void set_mute(bool mute);
-				void set_paused(bool pause);
-				void set_playback_position(unsigned long long position, time_unit unit);
+				voice(device* dev, FMOD::Channel* channel, FMOD::Sound* fmod_sound, const std::shared_ptr<source>& sound, constructor_tag);
+				~voice();
 
 				void stop();
+				void pause();
+				void resume();
+				void set_volume(float volume);
+				void set_pitch(float pitch);
+				void set_pan(float pan);
+
+				float get_volume() const;
+				float get_pitch() const;
+				float get_pan() const;
+
+				bool is_playing() const;
+
+				void assign_to_submix(submix& parent);
+
+				template<typename T, typename... Ts>
+				std::weak_ptr<T> add_effect(Ts&& ts...)
+				{
+					m_effects.emplace_back(make_shared<T>(std::forward<Ts>(ts)...));
+					m_effects.back()->create_dsp(m_channel);
+					return m_effects.back();
+				}
 
 			private:
 				friend class device;
 				device* m_device;
-				std::weak_ptr<sound> m_sound;
 				FMOD::Channel* m_channel;
+				FMOD::Sound* m_sound;
+				std::shared_ptr<source> m_source;
+				std::vector<std::shared_ptr<effect_instance>> m_effects;
+				float pan = 0.0f;
 			};
 
-			class sound
+			struct memory_buffer
+			{
+				memory_buffer() = default;
+				memory_buffer(const std::byte* indata, size_t insize) : data(indata), size(insize) {}
+				const std::byte* data = nullptr;
+				size_t size = 0;
+			};
+
+			enum class memory_buffer_format
+			{
+				pcm8,
+				pcm16,
+				pcm24,
+				pcm32,
+				pcmfloat,
+			};
+
+			struct memory_buffer_description
+			{
+				memory_buffer_format format;
+				unsigned int num_channels;
+				unsigned int frequency;
+			};
+
+			struct memory_buffer_data
+			{
+				memory_buffer data;
+				memory_buffer_description description;
+			};
+
+			class source
+			{
+			public:
+				virtual ~source() {}
+				virtual memory_buffer_data get_audio_data() const = 0;
+			};
+
+			class buffer : public source
+			{
+			public:
+				memory_buffer_data get_audio_data() const override;
+
+			private:
+				friend std::shared_ptr<buffer> load_from_disk(const std::experimental::filesystem::path&);
+				friend std::shared_ptr<buffer> load_from_memory(const memory_buffer&, const memory_buffer_description&, bool);
+				std::variant<std::vector<std::byte>, memory_buffer> m_data;
+				memory_buffer_description m_description;
+			};
+
+			std::shared_ptr<buffer> load_from_disk(const std::experimental::filesystem::path& filepath);
+			std::shared_ptr<buffer> load_from_memory(const memory_buffer& buffer, const memory_buffer_description& description, bool copy = true);
+
+			class submix
 			{
 			private:
-				struct constructor_tag { explicit constructor_tag() = default; };
-
+				struct constructor_tag {};
 			public:
-				sound(device* device, FMOD::Sound* sound, constructor_tag);
+				submix(device* dev, FMOD::ChannelGroup* channelgroup, constructor_tag);
+				~submix();
 
-				enum class format
+				float get_volume() const;
+
+				void set_volume(float volume);
+
+				void assign_to_submix(submix& parent);
+
+				template<typename T, typename... Ts>
+				std::weak_ptr<T> add_effect(Ts&& ts...)
 				{
-					unknown,
-					pcm_8,
-					pcm_16,
-					pcm_24,
-					pcm_32,
-					pcm_float,
-				};
-
-				int get_frequency() const;
-				int get_channels() const;
-				format get_format() const;
-				device* get_device() const;
+					m_effects.emplace_back(make_shared<T>(std::forward<Ts>(ts)...));
+					m_effects.back()->create_dsp(m_channelgroup);
+					return m_effects.back();
+				}
 
 			private:
 				friend class device;
+				friend class voice;
 				device* m_device;
-				FMOD::Sound* m_sound;
+				FMOD::ChannelGroup* m_channelgroup;
+			};
+
+			class effect
+			{
+			public:
+				virtual ~effect() {}
+				virtual void process(float* buffer_in, float* buffer_out, size_t length_samples, int num_channels) = 0;
+			};
+
+			class effect_instance
+			{
+			public:
+				~effect_instance();
+
+				template<typename T>
+				T* get_effect() { return static_cast<T*>(m_effect.get()); }
+				template<typename T>
+				const T* get_effect() const { return static_cast<T*>(m_effect.get()); }
+			private:
+				friend class voice;
+				friend class submix;
+				void create_dsp(device* dev, FMOD::ChannelControl* ChannelControl);
+
+				std::unique_ptr<effect> m_effect;
+				FMOD::DSP* m_dsp;
 			};
 		}
 	}

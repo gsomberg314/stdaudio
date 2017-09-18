@@ -5,6 +5,7 @@
 using namespace std::experimental::audio;
 using namespace std::literals::chrono_literals;
 
+// LPF code from https://www.quora.com/Whats-the-C-coding-for-a-low-pass-filter
 class LowPassFilter : public effect
 {
 public:

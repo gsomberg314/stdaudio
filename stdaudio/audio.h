@@ -189,6 +189,7 @@ namespace std
 				friend class voice;
 				device* m_device;
 				FMOD::ChannelGroup* m_channelgroup;
+				std::vector<std::shared_ptr<effect_instance>> m_effects;
 			};
 
 			class effect
